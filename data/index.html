@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="minimal-ui, width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  body {
+    display: flex;
+    align-items: end;
+    height: 100vh;
+    padding: 15px;
+    box-sizing: border-box;
+    margin: 0;
+  }
+  #circle {
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    position: relative;
+
+  }
+   #volante {
+    position: absolute;
+    transform: rotate(0deg);
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url(./volante.webp);
+    background-size: 100%;
+    border: none;
+  }
+
+  #initialPoint {
+    width: 20px;
+    height: 20px;
+    background-color: yellow;
+    opacity: 0.5;
+    border-radius: 50%;
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+  }
+
+  #buzina {
+    position: absolute;
+    top: 24px;
+    left: 0;
+    width: 34%;
+    height: 28%;
+    right: 0;
+    bottom: 0;
+    margin: auto;
+    z-index: 3;
+  }
+
+
+  @media screen and (orientation:portrait) {
+    #circle {
+      display: none;
+    }
+
+    body::before {
+      content: "Rotate your phone";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+
+    }
+
+  }
+</style>
+</head>
+<body>
+  <div id="circle">
+      <div id="initialPoint"> 
+
+      </div>
+      <button id="volante"> 
+        <div id="buzina">
+        </div>
+      </button>
+  </div>
+</body>
+<script>
+
+
+
+  const circle = document.getElementById("circle")
+  const initialPoint = document.getElementById("initialPoint")
+  const steeringWheel = document.getElementById("volante")
+  const horn = document.getElementById("buzina")
+
+
+  let lastAngle = 0
+  let startAngle = 0
+  let totalAngle = 0
+  let control = 0
+
+  let isDragging = false
+  let isStopping = false
+
+  let returnInterval, returnPointInterval
+
+
+  circle.addEventListener("mousedown", handleStart)
+  circle.addEventListener("touchstart", handleStart)
+
+  document.addEventListener("mousemove", handleMove)
+  document.addEventListener("touchmove", handleMove)
+
+  document.addEventListener("mouseup", handleEnd);	
+  document.addEventListener("touchend", handleEnd);	
+
+  function sendData(pos) {
+    pos = (pos + 540) / 6
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+      if (this.readyState == 4 && this.status == 200) {
+        console.log(this.responseText);
+      }
+    };
+    xhttp.open("GET", "setPOS?servoPOS="+pos, true);
+    xhttp.send();
+  }
+
+
+  function handleStart(e) {
+    if (!isStopping) {
+      e.preventDefault()
+      isDragging = true
+
+      if (e.target == buzina) {
+        //console.log('horn')
+        //isDragging = false
+        //return
+      }
+      
+      initialPoint.style.transition = "none"
+
+      const touch = e.type === "touchstart" ? e.touches[0] : e
+      const rect = circle.getBoundingClientRect()
+      const centerX = rect.left + rect.width / 2
+      const centerY = rect.top + rect.height / 2
+      
+      const currentAngle =  Math.atan2(touch.clientY - centerY, touch.clientX - centerX) * (180 / Math.PI)
+      startAngle = -lastAngle + Math.atan2(touch.clientY - centerY, touch.clientX - centerX) * (180 / Math.PI)
+    
+      clearInterval(returnPointInterval)
+      clearInterval(returnInterval)
+    } 
+  }
+
+  function handleMove(e) {
+    e.preventDefault();
+    if (isDragging ) {
+      const touch = e.type === "touchmove" ? e.touches[0] : e
+      const rect = circle.getBoundingClientRect()
+      const centerX = rect.left + rect.width / 2
+      const centerY = rect.top + rect.height / 2
+      const currentAngle =  Math.atan2(touch.clientY - centerY, touch.clientX - centerX) * (180 / Math.PI)
+
+      let angle = currentAngle - startAngle
+
+      let x = touch.clientX
+      let y = touch.clientY
+      
+
+      if (angle < -180) {
+        angle += 360;
+      } else if (angle > 180) {
+        angle -= 360;
+      }
+
+      diference = angle - lastAngle
+
+      if ( (angle < 0 && lastAngle > 0) || (angle > 0 && lastAngle < 0) && Math.abs(diference) > 300) {
+        console.log('OK')
+        diference = lastAngle + angle
+        totalAngle += diference 
+      }
+      else  {
+        totalAngle += diference
+      }
+
+      if (Math.abs(totalAngle) > 539) {
+        totalAngle = Math.sign(totalAngle) * 540
+      }
+
+      lastAngle = angle
+
+      steeringWheel.style.transform = "rotate("+totalAngle+"deg)"
+      console.log("Ângulo:", totalAngle.toFixed(2))
+
+      control++
+
+      if (control === 10) {
+        sendData(totalAngle)
+        lastpositionservo = totalAngle
+        control = 0
+
+      }
+    } 
+  }
+  function gradualReturnToZero() {
+    returnInterval = setInterval(() => {
+        if (Math.abs(totalAngle) <= 0.35) {
+          steeringWheel.style.transform = `rotate(0deg)`;
+          clearInterval(returnInterval);
+        } else {
+          totalAngle -= totalAngle / 42
+          if (Math.abs(totalAngle) < 180 ) {
+            lastAngle = totalAngle
+          }
+          console.log("Ângulo voltando:", totalAngle.toFixed(2))
+          steeringWheel.style.transform = `rotate(${totalAngle}deg)`
+        }
+
+      }, 10);
+  }
+
+  
+
+  function handleEnd() {
+    if (isDragging) {
+      isDragging = false
+
+      returnPointInterval = setTimeout(() => {
+        initialPoint.style.left = "50%"
+        initialPoint.style.top = "-5px"
+        initialPoint.style.transition = "all 0.4s ease 0s"
+      }, 1000)
+
+      sendData(0)
+      gradualReturnToZero()
+
+    }
+  }
+
+
+
+</script>
+</body>
+</html>
